@@ -1,0 +1,51 @@
+{
+    "name": "ario-labs/php-talos",
+    "description": "An expressive PHP SDK for Talos (talosctl) with a focus on simplicity and ease of use.",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "ArioLabs\\Talos\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "authors": [{ "name": "Nick Arellano", "email": "nick.a@hey.com" }],
+    "require": {
+        "php": "^8.3.0",
+        "symfony/process": "^7.3",
+        "symfony/yaml": "^7.3",
+        "illuminate/support": "^12"
+    },
+    "require-dev": {
+        "pestphp/pest": "^4.0",
+        "rector/rector": "^2.1",
+        "laravel/pint": "^1.24",
+        "phpstan/phpstan": "^2.1",
+        "pestphp/pest-plugin-type-coverage": "^4.0",
+        "orchestra/testbench": "^10.6"
+    },
+    "prefer-stable": true,
+    "config": {
+        "preferred-install": "dist",
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "scripts": {
+        "lint": [ "rector", "pint" ],
+        "test:lint": [ "pint --test" ],
+        "test:type-coverage": "pest --type-coverage --min=100",
+        "test:types": "phpstan --no-progress",
+        "test:unit": "pest --parallel --coverage --min=100",
+        "test": [
+            "@test:lint",
+            "@test:type-coverage",
+            "@test:unit",
+            "@test:types"
+        ]
+    }
+}
