@@ -461,7 +461,7 @@ final class ClusterBuilder
 
     public function generate(): string
     {
-        $dir = $this->outDir ?? rtrim(sys_get_temp_dir(), '/').'/talos-gen-'.uniqid();
+        $dir = $this->outDir ?? mb_rtrim(sys_get_temp_dir(), '/').'/talos-gen-'.uniqid();
 
         return $this->generateTo($dir);
     }
@@ -516,7 +516,8 @@ final class ClusterBuilder
 
     /** Convenience: generate a talosconfig string for this builder's
      *  cluster/endpoint using a temporary gen-config run (no persistence).
-     *  @param  array<int|string, string|bool>  $flags
+     *
+     * @param  array<int|string, string|bool>  $flags
      */
     public function talosconfigInMemory(array $flags = []): string
     {

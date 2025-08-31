@@ -210,12 +210,14 @@ final class TalosCluster
     }
 
     /** Generate a talosconfig and return its contents as a string.
-     *  Uses a temporary directory; no persistent files are left behind.
-     *  @param  array<int|string, string|bool>  $flags
+     *  Uses a temporary directory by default; pass $outDir to control the path.
+     *  No persistent files are left behind.
+     *
+     * @param  array<int|string, string|bool>  $flags
      */
-    public function genTalosconfig(string $cluster, string $endpoint, array $flags = []): string
+    public function genTalosconfig(string $cluster, string $endpoint, array $flags = [], ?string $outDir = null): string
     {
-        $tmp = rtrim(sys_get_temp_dir(), '/').'/talos-tmp-'.uniqid();
+        $tmp = $outDir ?: (mb_rtrim(sys_get_temp_dir(), '/').'/talos-tmp-'.uniqid());
         @mkdir($tmp, 0775, true);
 
         // Reuse genConfig to invoke talosctl with any flags provided.
