@@ -244,14 +244,30 @@ final class TalosCluster
     /** @param array<int|string, string|bool> $flags */
     public function genConfigWithSecrets(string $cluster, string $endpoint, string $outputDir, TalosSecrets $secrets, array $flags = []): string
     {
-        $dir = $this->genConfig($cluster, $endpoint, $outputDir, $flags);
-        $patch = $secrets->toPatch();
-        if ($patch !== []) {
-            $this->patchYaml($dir.'/controlplane.yaml', $patch);
-            $this->patchYaml($dir.'/worker.yaml', $patch);
-        }
+        // Write secrets to a temporary YAML file and pass via --with-secrets so
+        // talosctl derives all inlined values deterministically from these secrets.
+        $tmpSecrets = mb_rtrim(sys_get_temp_dir(), '/').'/talos-secrets-'.uniqid().'.yaml';
+        @mkdir(dirname($tmpSecrets), 0775, true);
+        file_put_contents($tmpSecrets, $secrets->toYaml());
 
-        return $dir;
+        try {
+            // Merge existing flags with --with-secrets
+            $flagsWithSecrets = $flags;
+            $flagsWithSecrets['--with-secrets'] = $tmpSecrets;
+
+            $dir = $this->genConfig($cluster, $endpoint, $outputDir, $flagsWithSecrets);
+
+            // Idempotent: keep patch step in case callers rely on partial patches.
+            $patch = $secrets->toPatch();
+            if ($patch !== []) {
+                $this->patchYaml($dir.'/controlplane.yaml', $patch);
+                $this->patchYaml($dir.'/worker.yaml', $patch);
+            }
+
+            return $dir;
+        } finally {
+            @unlink($tmpSecrets);
+        }
     }
 
     /** @param  array<int, string>  $args

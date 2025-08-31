@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2025-08-31
+
+### Fixed
+- `TalosCluster::genConfigWithSecrets()` now invokes `talosctl gen config` with `--with-secrets` using a temporary secrets YAML, ensuring deterministic config generation when reusing the same `TalosSecrets`. The method still applies the patch from `TalosSecrets::toPatch()` idempotently after generation.
+
+### Tests
+- Added `tests/Feature/InMemoryDeterminismWithSecretsTest.php` to verify that generating in memory twice with the same secrets yields identical YAML and that `--with-secrets` is passed through.
+
+### Notes
+- No public API changes. README remains accurate; secrets workflow and usage stay the same.
+
 ## [1.1.1] - 2025-08-30
 
 ### Fixed
