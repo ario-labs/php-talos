@@ -209,6 +209,38 @@ final class TalosCluster
         return TalosSecrets::fromArray($data);
     }
 
+    /** Generate a talosconfig and return its contents as a string.
+     *  Uses a temporary directory by default; pass $outDir to control the path.
+     *  No persistent files are left behind.
+     *
+     * @param  array<int|string, string|bool>  $flags
+     */
+    public function genTalosconfig(string $cluster, string $endpoint, array $flags = [], ?string $outDir = null): string
+    {
+        $tmp = $outDir ?: (mb_rtrim(sys_get_temp_dir(), '/').'/talos-tmp-'.uniqid());
+        @mkdir($tmp, 0775, true);
+
+        // Reuse genConfig to invoke talosctl with any flags provided.
+        $dir = $this->genConfig($cluster, $endpoint, $tmp, $flags);
+        $path = $dir.'/talosconfig';
+
+        $content = is_file($path) ? (string) file_get_contents($path) : '';
+
+        // Best-effort cleanup
+        if (is_file($path)) {
+            @unlink($path);
+        }
+        // Remove other files if present
+        foreach (['controlplane.yaml', 'worker.yaml'] as $f) {
+            if (is_file($dir.'/'.$f)) {
+                @unlink($dir.'/'.$f);
+            }
+        }
+        @rmdir($dir);
+
+        return $content;
+    }
+
     /** @param array<int|string, string|bool> $flags */
     public function genConfigWithSecrets(string $cluster, string $endpoint, string $outputDir, TalosSecrets $secrets, array $flags = []): string
     {

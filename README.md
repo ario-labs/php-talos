@@ -49,7 +49,7 @@ $builder = new ClusterBuilder(
     talos: $talos,
     cluster: 'demo',
     endpoint: 'https://10.255.0.50:6443',
-    outDir: sys_get_temp_dir().'/talos-demo-'.uniqid(),
+    // outDir is optional; prefer in-memory + writeTo() or use generateTo($dir)
 );
 
 $dir = $builder
@@ -67,7 +67,7 @@ $dir = $builder
     ->cni(Cni::Flannel)
     ->additionalSans(['demo.local', '10.255.0.50'])
     ->manifests(['https://example.com/addons.yaml'])
-    ->generate();
+    ->generateTo(sys_get_temp_dir().'/talos-demo-'.uniqid());
 
 // Apply to a node (example)
 $talos->nodes(['10.255.0.50'])->applyConfig($dir.'/controlplane.yaml', insecure: true);
@@ -94,7 +94,7 @@ $payload = $secrets->toBase64Json();
 $secrets = TalosSecrets::fromBase64Json($payload);
 
 // 3) Regenerate configs with secrets
-$builder = new ClusterBuilder($talos, 'demo', 'https://10.255.0.50:6443', sys_get_temp_dir().'/demo-'.uniqid());
+$builder = new ClusterBuilder($talos, 'demo', 'https://10.255.0.50:6443');
 $dir = $builder
     ->secrets($secrets)
     ->network(dns: 'cluster.local', pod: ['10.42.0.0/16'], svc: ['10.43.0.0/16'])
@@ -123,6 +123,45 @@ $workerYaml = $configs->worker();
 // Optionally persist later
 $out = sys_get_temp_dir().'/talos-out-'.uniqid();
 $configs->writeTo($out);
+
+// Also get an in-memory talosconfig (not persisted)
+$talosconfig = $builder->talosconfigInMemory();
+```
+
+### Laravel Workflow (Secrets → In‑Memory Configs → talosconfig)
+
+Below is an example of the intended application flow when using this package inside a Laravel app. Secrets are generated once, encrypted and stored by your app, and later used to regenerate configs and a talosconfig entirely in memory.
+
+```php
+use ArioLabs\Talos\TalosFactory;
+use ArioLabs\Talos\TalosSecrets;
+use ArioLabs\Talos\Builders\ClusterBuilder;
+
+// 1) Generate secrets and store (encrypt before saving)
+$talos = (new TalosFactory(['log' => false]))->for();
+$secrets = $talos->genSecrets();
+$payload = $secrets->toBase64Json(); // encrypt this string with app key, store in DB
+
+// ... later in a request/job: load + decrypt
+$secrets = TalosSecrets::fromBase64Json($payload);
+
+// 2) Regenerate configs in memory
+$builder = new ClusterBuilder($talos, 'demo', 'https://10.255.0.50:6443');
+$configs = $builder
+    ->secrets($secrets)
+    ->network(dns: 'cluster.local', pod: ['10.42.0.0/16'], svc: ['10.43.0.0/16'])
+    ->generateInMemory();
+
+$controlplaneYaml = $configs->controlplane();
+$workerYaml = $configs->worker();
+
+// 3) Obtain a talosconfig (in memory) for subsequent operations
+$talosconfig = $builder->talosconfigInMemory();
+
+// Optionally persist if needed
+$dir = storage_path('talos/'.uniqid());
+$configs->writeTo($dir);
+file_put_contents($dir.'/talosconfig', $talosconfig);
 ```
 
 ## Fluent Builder Reference
@@ -152,6 +191,10 @@ $configs->writeTo($out);
   - `patchFile(string $relativeYaml, array $patch)` → per-file overrides
 - Secrets
   - `secrets(TalosSecrets $secrets)` → injects cluster/machine secrets
+  - `generateInMemory()` → return `GeneratedConfigs` without touching disk
+  - `talosconfigInMemory(array $flags = [])` → return talosconfig content as a string
+  - `generateTo(string $dir)` → generate configs to a specific directory
+  - Constructor `outDir` is optional; if omitted, `generate()` uses a temp directory
 
 ## Patching Precedence
 
