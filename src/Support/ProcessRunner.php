@@ -7,7 +7,7 @@ namespace ArioLabs\Talos\Support;
 use Closure;
 use Symfony\Component\Process\Process;
 
-final class ProcessRunner implements Runner
+final readonly class ProcessRunner implements Runner
 {
     public function __construct(
         private string $bin,
@@ -25,7 +25,7 @@ final class ProcessRunner implements Runner
         $cmd = array_merge([$this->bin], $args);
         $proc = new Process($cmd, $this->cwd, $this->env, null, $this->timeout);
 
-        if ($onChunk) {
+        if ($onChunk instanceof Closure) {
             $proc->run(fn (string $type, string $buffer) => $onChunk($type, $buffer));
         } else {
             $proc->run();
@@ -36,7 +36,7 @@ final class ProcessRunner implements Runner
         $err = $proc->getErrorOutput();
 
         if ($this->log && function_exists('logger')) {
-            logger()->debug('[talosctl]'.implode(' ', $cmd), compact('exit', 'out', 'err'));
+            logger()->debug('[talosctl]'.implode(' ', $cmd), ['exit' => $exit, 'out' => $out, 'err' => $err]);
         }
 
         return [$exit, $out, $err];

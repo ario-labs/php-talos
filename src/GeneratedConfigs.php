@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ArioLabs\Talos;
 
-final class GeneratedConfigs
+final readonly class GeneratedConfigs
 {
     public function __construct(
         private string $controlplane,

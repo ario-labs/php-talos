@@ -7,7 +7,7 @@ namespace ArioLabs\Talos\Builders;
 use ArioLabs\Talos\Enums\Cni;
 use ArioLabs\Talos\TalosCluster;
 use InvalidArgumentException;
-use Symfony\Component\Yaml\Yaml;
+use RuntimeException;
 
 final class ClusterBuilder
 {
@@ -29,16 +29,16 @@ final class ClusterBuilder
     private ?\ArioLabs\Talos\TalosSecrets $secrets = null;
 
     public function __construct(
-        private TalosCluster $talos,
-        private string $cluster,
-        private string $endpoint,
-        private ?string $outDir = null,
+        private readonly TalosCluster $talos,
+        private readonly string $cluster,
+        private readonly string $endpoint,
+        private readonly ?string $outDir = null,
     ) {}
 
     /** @param  array<int, string>  $sans */
     public function additionalSans(array $sans): static
     {
-        if ($sans) {
+        if ($sans !== []) {
             $this->flags['--additional-sans'] = implode(',', $sans);
         }
 
@@ -82,7 +82,7 @@ final class ClusterBuilder
     public function podSubnets(array $cidrs): static
     {
         $this->validateCidrs($cidrs, 'podSubnets');
-        if ($cidrs) {
+        if ($cidrs !== []) {
             $this->mergeMachinePatch([
                 'cluster' => [
                     'network' => [
@@ -99,7 +99,7 @@ final class ClusterBuilder
     public function serviceSubnets(array $cidrs): static
     {
         $this->validateCidrs($cidrs, 'serviceSubnets');
-        if ($cidrs) {
+        if ($cidrs !== []) {
             $this->mergeMachinePatch([
                 'cluster' => [
                     'network' => [
@@ -226,7 +226,7 @@ final class ClusterBuilder
             'dhcp' => $dhcp,
             'addresses' => array_values($addresses),
         ];
-        if ($routes) {
+        if ($routes !== []) {
             $entry['routes'] = array_values($routes);
         }
         $this->interfaces[] = $entry;
@@ -283,13 +283,13 @@ final class ClusterBuilder
         if ($dns !== null) {
             $this->dnsDomain($dns);
         }
-        if ($pod) {
+        if ($pod !== []) {
             $this->podSubnets($pod);
         }
-        if ($svc) {
+        if ($svc !== []) {
             $this->serviceSubnets($svc);
         }
-        if ($nameservers) {
+        if ($nameservers !== []) {
             $this->nameservers($nameservers);
         }
         foreach ($interfaces as $i => $cfg) {
@@ -469,13 +469,13 @@ final class ClusterBuilder
     /** Generate configs to a specific directory (explicit disk output). */
     public function generateTo(string $dir): string
     {
-        if ($this->secrets !== null) {
+        if ($this->secrets instanceof \ArioLabs\Talos\TalosSecrets) {
             $dir = $this->talos->genConfigWithSecrets($this->cluster, $this->endpoint, $dir, $this->secrets, $this->flags);
         } else {
             $dir = $this->talos->genConfig($this->cluster, $this->endpoint, $dir, $this->flags);
         }
         // Apply accumulated machine-level patches (e.g., network settings) to both configs first
-        if ($this->machinePatches) {
+        if ($this->machinePatches !== []) {
             $this->talos->patchYaml($dir.'/controlplane.yaml', $this->machinePatches);
             $this->talos->patchYaml($dir.'/worker.yaml', $this->machinePatches);
         }
@@ -488,30 +488,56 @@ final class ClusterBuilder
 
     public function generateInMemory(): \ArioLabs\Talos\GeneratedConfigs
     {
-        // Build configs purely in memory from accumulated patches.
-        // Start from empty base and merge machine-level patches into both files.
-        $cp = [];
-        $wk = [];
+        // Strict mode: always generate via talosctl to ensure real Talos configs.
+        $tmp = mb_rtrim(sys_get_temp_dir(), '/').'/talos-inmem-'.uniqid();
+        @mkdir($tmp, 0775, true);
 
-        if ($this->machinePatches) {
-            $cp = $this->deepMerge($cp, $this->machinePatches);
-            $wk = $this->deepMerge($wk, $this->machinePatches);
-        }
-
-        // Apply any per-file overrides next.
-        foreach ($this->patches as $file => $patch) {
-            if ($file === 'controlplane.yaml') {
-                $cp = $this->deepMerge($cp, $patch);
-            } elseif ($file === 'worker.yaml') {
-                $wk = $this->deepMerge($wk, $patch);
+        $dir = $tmp;
+        try {
+            if ($this->secrets instanceof \ArioLabs\Talos\TalosSecrets) {
+                $dir = $this->talos->genConfigWithSecrets($this->cluster, $this->endpoint, $tmp, $this->secrets, $this->flags);
+            } else {
+                $dir = $this->talos->genConfig($this->cluster, $this->endpoint, $tmp, $this->flags);
             }
+
+            $cpPath = $dir.'/controlplane.yaml';
+            $wkPath = $dir.'/worker.yaml';
+
+            if (! is_file($cpPath) || ! is_file($wkPath)) {
+                throw new RuntimeException('talosctl gen config did not produce controlplane.yaml/worker.yaml');
+            }
+
+            if ($this->machinePatches !== []) {
+                $this->talos->patchYaml($cpPath, $this->machinePatches);
+                $this->talos->patchYaml($wkPath, $this->machinePatches);
+            }
+            foreach ($this->patches as $file => $patch) {
+                $target = $dir.'/'.$file;
+                if (is_file($target)) {
+                    $this->talos->patchYaml($target, $patch);
+                }
+            }
+
+            $cpYaml = (string) file_get_contents($cpPath);
+            $wkYaml = (string) file_get_contents($wkPath);
+
+            return new \ArioLabs\Talos\GeneratedConfigs($cpYaml, $wkYaml);
+        } finally {
+            // Best-effort cleanup of temp artifacts
+            $cp = $dir.'/controlplane.yaml';
+            $wk = $dir.'/worker.yaml';
+            if (is_file($cp)) {
+                @unlink($cp);
+            }
+            if (is_file($wk)) {
+                @unlink($wk);
+            }
+            $tc = $dir.'/talosconfig';
+            if (is_file($tc)) {
+                @unlink($tc);
+            }
+            @rmdir($dir);
         }
-
-        // Normalize and dump as YAML strings.
-        $cpYaml = Yaml::dump($this->normalizeSequences($cp), 8, 2);
-        $wkYaml = Yaml::dump($this->normalizeSequences($wk), 8, 2);
-
-        return new \ArioLabs\Talos\GeneratedConfigs($cpYaml, $wkYaml);
     }
 
     /** Convenience: generate a talosconfig string for this builder's
@@ -522,54 +548,6 @@ final class ClusterBuilder
     public function talosconfigInMemory(array $flags = []): string
     {
         return $this->talos->genTalosconfig($this->cluster, $this->endpoint, $flags);
-    }
-
-    /** @param  array<int|string, mixed>  $a
-     *  @param  array<int|string, mixed>  $b
-     *  @return array<int|string, mixed> */
-    private function deepMerge(array $a, array $b): array
-    {
-        foreach ($b as $k => $v) {
-            if (is_array($v) && isset($a[$k]) && is_array($a[$k])) {
-                $a[$k] = $this->deepMerge($a[$k], $v);
-            } else {
-                $a[$k] = $v;
-            }
-        }
-
-        return $a;
-    }
-
-    /** Normalize known sequence-typed keys: if empty, omit them so the YAML dumper doesn't emit '{}'.
-     *  Keeps empty map-typed keys (e.g., registries: {}) untouched.
-     *
-     *  @param  array<int|string, mixed>  $data
-     *  @return array<int|string, mixed> */
-    private function normalizeSequences(array $data): array
-    {
-        $sequenceKeys = [
-            'certSANs',
-            'extraManifests',
-            'inlineManifests',
-            'podSubnets',
-            'serviceSubnets',
-            'advertisedSubnets',
-            'nameservers',
-            'interfaces',
-        ];
-
-        foreach ($data as $k => $v) {
-            if (is_array($v)) {
-                if ($v === [] && in_array((string) $k, $sequenceKeys, true)) {
-                    unset($data[$k]);
-
-                    continue;
-                }
-                $data[$k] = $this->normalizeSequences($v);
-            }
-        }
-
-        return $data;
     }
 
     /** @param  array<int|string, mixed>  $patch */
@@ -584,7 +562,7 @@ final class ClusterBuilder
     private function buildNestedPatchFromDot(string $path, string|int|float|bool|array|null $value): array
     {
         $keys = array_filter(explode('.', $path), static fn (string $k): bool => $k !== '');
-        if (! $keys) {
+        if ($keys === []) {
             throw new InvalidArgumentException('set() path must be non-empty');
         }
 
@@ -605,7 +583,7 @@ final class ClusterBuilder
             }
             // Basic CIDR validation for IPv4 or IPv6
             $isIpv4 = (bool) preg_match('/^((25[0-5]|2[0-4]\\d|[01]?\\d?\\d)(\\.)){3}(25[0-5]|2[0-4]\\d|[01]?\\d?\\d)\/(3[0-2]|[12]?\\d)$/', $cidr);
-            $isIpv6 = (bool) preg_match('/^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}\/([0-9]|[1-9]\\d|1[01]\\d|12[0-8])$/', $cidr);
+            $isIpv6 = (bool) preg_match('/^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}\/(\d|[1-9]\d|1[01]\d|12[0-8])$/', $cidr);
             if (! $isIpv4 && ! $isIpv6) {
                 throw new InvalidArgumentException(sprintf('Invalid CIDR "%s" for %s', $cidr, $field));
             }
@@ -628,7 +606,7 @@ final class ClusterBuilder
             if ($label === '' || mb_strlen($label) > 63) {
                 return false;
             }
-            if (! preg_match('/^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/', $label)) {
+            if (in_array(preg_match('/^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/', $label), [0, false], true)) {
                 return false;
             }
         }

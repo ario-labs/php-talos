@@ -12,7 +12,7 @@ use Symfony\Component\Yaml\Yaml;
 final class TalosCluster
 {
     public function __construct(
-        private Runner $runner,
+        private readonly Runner $runner,
         private ?string $talosconfig = null,
         private ?string $clusterName = null,
         /** @var array<int, string> */
@@ -123,7 +123,7 @@ final class TalosCluster
         if ($force) {
             $args[] = '--force';
         }
-        if ($outPath) {
+        if ($outPath !== null && $outPath !== '' && $outPath !== '0') {
             $args[] = '-f';
             $args[] = $outPath;
         }
@@ -132,7 +132,7 @@ final class TalosCluster
             throw new CommandFailed($args, $c, $e);
         }
 
-        return $outPath ?: mb_trim($o);
+        return $outPath !== null && $outPath !== '' && $outPath !== '0' ? $outPath : mb_trim($o);
     }
 
     public function upgrade(string $image, bool $reboot = true): void
@@ -217,7 +217,7 @@ final class TalosCluster
      */
     public function genTalosconfig(string $cluster, string $endpoint, array $flags = [], ?string $outDir = null): string
     {
-        $tmp = $outDir ?: (mb_rtrim(sys_get_temp_dir(), '/').'/talos-tmp-'.uniqid());
+        $tmp = $outDir !== null && $outDir !== '' && $outDir !== '0' ? $outDir : (mb_rtrim(sys_get_temp_dir(), '/').'/talos-tmp-'.uniqid());
         @mkdir($tmp, 0775, true);
 
         // Reuse genConfig to invoke talosctl with any flags provided.
@@ -246,7 +246,7 @@ final class TalosCluster
     {
         $dir = $this->genConfig($cluster, $endpoint, $outputDir, $flags);
         $patch = $secrets->toPatch();
-        if ($patch) {
+        if ($patch !== []) {
             $this->patchYaml($dir.'/controlplane.yaml', $patch);
             $this->patchYaml($dir.'/worker.yaml', $patch);
         }
@@ -267,7 +267,7 @@ final class TalosCluster
     private function talosFlags(): array
     {
         $flags = [];
-        if ($this->talosconfig) {
+        if ($this->talosconfig !== null && $this->talosconfig !== '' && $this->talosconfig !== '0') {
             $flags[] = '--talosconfig='.$this->talosconfig;
         }
 
@@ -277,13 +277,13 @@ final class TalosCluster
     /** @return array<int, string> */
     private function nodeFlags(): array
     {
-        return $this->nodes ? ['--nodes', implode(',', $this->nodes)] : [];
+        return $this->nodes !== [] ? ['--nodes', implode(',', $this->nodes)] : [];
     }
 
     /** @return array<int, string> */
     private function endpointFlags(): array
     {
-        return $this->endpoints ? ['--endpoints', implode(',', $this->endpoints)] : [];
+        return $this->endpoints !== [] ? ['--endpoints', implode(',', $this->endpoints)] : [];
     }
 
     /** @param  array<int|string, mixed>  $a
@@ -292,11 +292,7 @@ final class TalosCluster
     private function deepMerge(array $a, array $b): array
     {
         foreach ($b as $k => $v) {
-            if (is_array($v) && isset($a[$k]) && is_array($a[$k])) {
-                $a[$k] = $this->deepMerge($a[$k], $v);
-            } else {
-                $a[$k] = $v;
-            }
+            $a[$k] = is_array($v) && isset($a[$k]) && is_array($a[$k]) ? $this->deepMerge($a[$k], $v) : $v;
         }
 
         return $a;

@@ -6,7 +6,7 @@ namespace ArioLabs\Talos;
 
 use Symfony\Component\Yaml\Yaml;
 
-final class TalosSecrets
+final readonly class TalosSecrets
 {
     /** @param array<int|string, mixed> $data */
     public function __construct(private array $data) {}
@@ -79,10 +79,10 @@ final class TalosSecrets
         }
 
         $patch = [];
-        if ($clusterPatch) {
+        if ($clusterPatch !== []) {
             $patch['cluster'] = $clusterPatch;
         }
-        if ($machinePatch) {
+        if ($machinePatch !== []) {
             $patch['machine'] = $machinePatch;
         }
 
