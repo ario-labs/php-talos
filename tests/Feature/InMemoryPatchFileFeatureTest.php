@@ -5,10 +5,11 @@ declare(strict_types=1);
 use ArioLabs\Talos\Builders\ClusterBuilder;
 use ArioLabs\Talos\TalosCluster;
 use Symfony\Component\Yaml\Yaml;
-use Tests\Fakes\ProcessRunnerFake;
+use Tests\Fakes\ProcessRunnerWritingFake;
 
 it('applies per-file patches in generateInMemory() and normalizes sequences', function (): void {
-    $runner = new ProcessRunnerFake();
+    // Use writer fake so talosctl gen config writes real files to temp dir
+    $runner = new ProcessRunnerWritingFake();
     $talos = new TalosCluster($runner);
 
     $b = new ClusterBuilder($talos, 'demo', '10.0.0.1');

@@ -6,10 +6,10 @@ use ArioLabs\Talos\Builders\ClusterBuilder;
 use ArioLabs\Talos\GeneratedConfigs;
 use ArioLabs\Talos\TalosCluster;
 use Symfony\Component\Yaml\Yaml;
-use Tests\Fakes\ProcessRunnerFake;
+use Tests\Fakes\ProcessRunnerWritingFake;
 
 it('generates in-memory configs from builder patches', function (): void {
-    $runner = new ProcessRunnerFake();
+    $runner = new ProcessRunnerWritingFake();
     $talos = new TalosCluster($runner);
 
     $out = sys_get_temp_dir().'/talos-generated-inmem-'.uniqid();

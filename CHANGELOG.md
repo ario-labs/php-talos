@@ -2,7 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.1.0] - 2025-08-31
+## [1.1.1] - 2025-08-30
+
+### Fixed
+- `ClusterBuilder::generateInMemory()` now generates real Talos machine configs by invoking `talosctl gen config` in a temporary directory, applying patches, reading YAML back, and cleaning up. This fixes prior behavior introduced in 1.1.0 that produced patch-shaped YAML not guaranteed to be valid Talos configs.
+
+### Notes
+- Exceptions: errors from `talosctl` surface as `ArioLabs\\Talos\\Exceptions\\CommandFailed`; a `RuntimeException` is thrown if `controlplane.yaml`/`worker.yaml` are not produced.
+
+## [1.1.0] - 2025-08-30
 
 ### Fixed
 - `ClusterBuilder::generateInMemory()` no longer delegates to disk generation; now builds YAML purely in memory.
@@ -16,7 +24,7 @@ All notable changes to this project will be documented in this file.
 - `ClusterBuilder` constructor `outDir` parameter is now optional (`?string`); when omitted, `generate()` uses a temporary directory under the system temp path.
 - README updated to recommend in-memory generation + `GeneratedConfigs::writeTo()` and to document `generateTo()`.
 
-## [1.0.0] - YYYY-MM-DD
+## [1.0.0] - 2025-08-30
 
 Initial stable release.
 

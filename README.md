@@ -103,13 +103,13 @@ $dir = $builder
 
 ### In‑Memory Generation
 
-Work with the generated YAML purely in memory, and only write to disk if/when you need to persist or apply them later.
+Obtain the generated YAML as strings, and only write to disk if/when you need to persist or apply them later. Under the hood, this uses a temporary directory to invoke `talosctl gen config`, applies your patches, then cleans up. Requires `talosctl` in PATH; errors from `talosctl` bubble as `ArioLabs\\Talos\\Exceptions\\CommandFailed`, and a `RuntimeException` is thrown if expected files are not produced.
 
 ```php
 use ArioLabs\Talos\Builders\ClusterBuilder;
 use ArioLabs\Talos\GeneratedConfigs;
 
-$builder = new ClusterBuilder($talos, 'demo', 'https://10.255.0.50:6443', sys_get_temp_dir().'/demo-'.uniqid());
+$builder = new ClusterBuilder($talos, 'demo', 'https://10.255.0.50:6443');
 
 $configs = $builder
     ->secrets($secrets)
@@ -124,7 +124,7 @@ $workerYaml = $configs->worker();
 $out = sys_get_temp_dir().'/talos-out-'.uniqid();
 $configs->writeTo($out);
 
-// Also get an in-memory talosconfig (not persisted)
+// Also get an in-memory talosconfig (not persisted; uses a temp dir under the hood)
 $talosconfig = $builder->talosconfigInMemory();
 ```
 
@@ -191,7 +191,7 @@ file_put_contents($dir.'/talosconfig', $talosconfig);
   - `patchFile(string $relativeYaml, array $patch)` → per-file overrides
 - Secrets
   - `secrets(TalosSecrets $secrets)` → injects cluster/machine secrets
-  - `generateInMemory()` → return `GeneratedConfigs` without touching disk
+  - `generateInMemory()` → returns `GeneratedConfigs` (uses a temp dir internally; throws on failure)
   - `talosconfigInMemory(array $flags = [])` → return talosconfig content as a string
   - `generateTo(string $dir)` → generate configs to a specific directory
   - Constructor `outDir` is optional; if omitted, `generate()` uses a temp directory
