@@ -7,6 +7,7 @@ namespace ArioLabs\Talos\Builders;
 use ArioLabs\Talos\Enums\Cni;
 use ArioLabs\Talos\TalosCluster;
 use InvalidArgumentException;
+use Symfony\Component\Yaml\Yaml;
 
 final class ClusterBuilder
 {
@@ -31,7 +32,7 @@ final class ClusterBuilder
         private TalosCluster $talos,
         private string $cluster,
         private string $endpoint,
-        private string $outDir,
+        private ?string $outDir = null,
     ) {}
 
     /** @param  array<int, string>  $sans */
@@ -460,10 +461,18 @@ final class ClusterBuilder
 
     public function generate(): string
     {
+        $dir = $this->outDir ?? rtrim(sys_get_temp_dir(), '/').'/talos-gen-'.uniqid();
+
+        return $this->generateTo($dir);
+    }
+
+    /** Generate configs to a specific directory (explicit disk output). */
+    public function generateTo(string $dir): string
+    {
         if ($this->secrets !== null) {
-            $dir = $this->talos->genConfigWithSecrets($this->cluster, $this->endpoint, $this->outDir, $this->secrets, $this->flags);
+            $dir = $this->talos->genConfigWithSecrets($this->cluster, $this->endpoint, $dir, $this->secrets, $this->flags);
         } else {
-            $dir = $this->talos->genConfig($this->cluster, $this->endpoint, $this->outDir, $this->flags);
+            $dir = $this->talos->genConfig($this->cluster, $this->endpoint, $dir, $this->flags);
         }
         // Apply accumulated machine-level patches (e.g., network settings) to both configs first
         if ($this->machinePatches) {
@@ -479,13 +488,87 @@ final class ClusterBuilder
 
     public function generateInMemory(): \ArioLabs\Talos\GeneratedConfigs
     {
-        $dir = $this->generate();
-        $cp = $dir.'/controlplane.yaml';
-        $wk = $dir.'/worker.yaml';
-        $cpYaml = is_file($cp) ? (string) file_get_contents($cp) : '';
-        $wkYaml = is_file($wk) ? (string) file_get_contents($wk) : '';
+        // Build configs purely in memory from accumulated patches.
+        // Start from empty base and merge machine-level patches into both files.
+        $cp = [];
+        $wk = [];
+
+        if ($this->machinePatches) {
+            $cp = $this->deepMerge($cp, $this->machinePatches);
+            $wk = $this->deepMerge($wk, $this->machinePatches);
+        }
+
+        // Apply any per-file overrides next.
+        foreach ($this->patches as $file => $patch) {
+            if ($file === 'controlplane.yaml') {
+                $cp = $this->deepMerge($cp, $patch);
+            } elseif ($file === 'worker.yaml') {
+                $wk = $this->deepMerge($wk, $patch);
+            }
+        }
+
+        // Normalize and dump as YAML strings.
+        $cpYaml = Yaml::dump($this->normalizeSequences($cp), 8, 2);
+        $wkYaml = Yaml::dump($this->normalizeSequences($wk), 8, 2);
 
         return new \ArioLabs\Talos\GeneratedConfigs($cpYaml, $wkYaml);
+    }
+
+    /** Convenience: generate a talosconfig string for this builder's
+     *  cluster/endpoint using a temporary gen-config run (no persistence).
+     *  @param  array<int|string, string|bool>  $flags
+     */
+    public function talosconfigInMemory(array $flags = []): string
+    {
+        return $this->talos->genTalosconfig($this->cluster, $this->endpoint, $flags);
+    }
+
+    /** @param  array<int|string, mixed>  $a
+     *  @param  array<int|string, mixed>  $b
+     *  @return array<int|string, mixed> */
+    private function deepMerge(array $a, array $b): array
+    {
+        foreach ($b as $k => $v) {
+            if (is_array($v) && isset($a[$k]) && is_array($a[$k])) {
+                $a[$k] = $this->deepMerge($a[$k], $v);
+            } else {
+                $a[$k] = $v;
+            }
+        }
+
+        return $a;
+    }
+
+    /** Normalize known sequence-typed keys: if empty, omit them so the YAML dumper doesn't emit '{}'.
+     *  Keeps empty map-typed keys (e.g., registries: {}) untouched.
+     *
+     *  @param  array<int|string, mixed>  $data
+     *  @return array<int|string, mixed> */
+    private function normalizeSequences(array $data): array
+    {
+        $sequenceKeys = [
+            'certSANs',
+            'extraManifests',
+            'inlineManifests',
+            'podSubnets',
+            'serviceSubnets',
+            'advertisedSubnets',
+            'nameservers',
+            'interfaces',
+        ];
+
+        foreach ($data as $k => $v) {
+            if (is_array($v)) {
+                if ($v === [] && in_array((string) $k, $sequenceKeys, true)) {
+                    unset($data[$k]);
+
+                    continue;
+                }
+                $data[$k] = $this->normalizeSequences($v);
+            }
+        }
+
+        return $data;
     }
 
     /** @param  array<int|string, mixed>  $patch */
