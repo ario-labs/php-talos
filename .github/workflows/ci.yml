@@ -48,7 +48,7 @@ jobs:
           curl -fsSL -o /tmp/talosctl https://github.com/siderolabs/talos/releases/download/${{ matrix.talos }}/talosctl-linux-amd64
           chmod +x /tmp/talosctl
           sudo mv /tmp/talosctl /usr/local/bin/talosctl
-          talosctl version
+          talosctl version --client --short
 
       - name: Run full test suite (unit + feature + integration)
         run: composer test
