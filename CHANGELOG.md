@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.3] - 2025-08-31
+
+### Fixed
+- In-memory talosconfig generation now derives from provided `TalosSecrets` when available, ensuring the generated `talosconfig` CA/client certs match the cluster and avoiding "tls: unknown certificate authority" errors with `talosctl`.
+- `ClusterBuilder::talosconfigInMemory()` now propagates builder flags and uses the secrets-aware path automatically when `secrets(...)` have been set on the builder.
+
+### Added
+- `TalosCluster::genTalosconfigWithSecrets()` public helper for generating a `talosconfig` using a temporary `--with-secrets` flow.
+
+### Tests
+- Added tests covering secrets-aware talosconfig generation and flag overrides.
+
+### Notes
+- No breaking API changes. Existing builder usage remains valid; behavior improves under the hood when secrets are provided.
+
 ## [1.1.2] - 2025-08-31
 
 ### Fixed
