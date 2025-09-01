@@ -547,7 +547,17 @@ final class ClusterBuilder
      */
     public function talosconfigInMemory(array $flags = []): string
     {
-        return $this->talos->genTalosconfig($this->cluster, $this->endpoint, $flags);
+        // Merge builder flags with per-call flags (per-call overrides by key)
+        $mergedFlags = $this->flags;
+        foreach ($flags as $k => $v) {
+            $mergedFlags[$k] = $v;
+        }
+
+        if ($this->secrets instanceof \ArioLabs\Talos\TalosSecrets) {
+            return $this->talos->genTalosconfigWithSecrets($this->cluster, $this->endpoint, $this->secrets, $mergedFlags);
+        }
+
+        return $this->talos->genTalosconfig($this->cluster, $this->endpoint, $mergedFlags);
     }
 
     /** @param  array<int|string, mixed>  $patch */
