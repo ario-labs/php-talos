@@ -125,8 +125,6 @@ $out = sys_get_temp_dir().'/talos-out-'.uniqid();
 $configs->writeTo($out);
 
 // Also get an in-memory talosconfig (not persisted; uses a temp dir under the hood)
-// If you've set secrets($secrets) on the builder, this talosconfig is derived from those
-// secrets so its CA/client certs match the cluster.
 $talosconfig = $builder->talosconfigInMemory();
 ```
 

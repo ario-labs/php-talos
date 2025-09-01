@@ -241,36 +241,6 @@ final class TalosCluster
         return $content;
     }
 
-    /** Same as genTalosconfig(), but ensures the generated talosconfig is derived
-     *  from the provided secrets so its CA/client certs match an existing cluster.
-     *
-     * @param  array<int|string, string|bool>  $flags
-     */
-    public function genTalosconfigWithSecrets(string $cluster, string $endpoint, TalosSecrets $secrets, array $flags = [], ?string $outDir = null): string
-    {
-        $tmp = $outDir !== null && $outDir !== '' && $outDir !== '0' ? $outDir : (mb_rtrim(sys_get_temp_dir(), '/').'/talos-tmp-'.uniqid());
-        @mkdir($tmp, 0775, true);
-
-        // Generate configs using supplied secrets so CA/client material is consistent.
-        $dir = $this->genConfigWithSecrets($cluster, $endpoint, $tmp, $secrets, $flags);
-        $path = $dir.'/talosconfig';
-
-        $content = is_file($path) ? (string) file_get_contents($path) : '';
-
-        // Best-effort cleanup
-        if (is_file($path)) {
-            @unlink($path);
-        }
-        foreach (['controlplane.yaml', 'worker.yaml'] as $f) {
-            if (is_file($dir.'/'.$f)) {
-                @unlink($dir.'/'.$f);
-            }
-        }
-        @rmdir($dir);
-
-        return $content;
-    }
-
     /** @param array<int|string, string|bool> $flags */
     public function genConfigWithSecrets(string $cluster, string $endpoint, string $outputDir, TalosSecrets $secrets, array $flags = []): string
     {
